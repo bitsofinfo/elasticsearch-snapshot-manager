@@ -8,15 +8,14 @@ lazy val root = (project in file(".")).
 
  //libraryDependencies += "fr.janalyse"   %% "janalyse-ssh" % "0.9.18" % "compile"
 
- libraryDependencies += "com.decodified" %% "scala-ssh" % "0.7.0"
- libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.2"
 
  libraryDependencies ++= Seq(
+  "ch.qos.logback" % "logback-classic" % "1.1.2",
+  "com.decodified" %% "scala-ssh" % "0.7.0",
   "org.bouncycastle" % "bcprov-jdk16" % "1.46",
-  "com.jcraft" % "jzlib" % "1.1.3"
+  "com.jcraft" % "jzlib" % "1.1.3",
+  "com.sksamuel.elastic4s" %% "elastic4s" % "1.4.13"
 )
-
-libraryDependencies += "com.sksamuel.elastic4s" %% "elastic4s" % "1.4.13"
 
 //SSH("xx.xx.xx.xx") { client =>
  // client.exec("ls -a").right.map { result =>
