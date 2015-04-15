@@ -1,8 +1,9 @@
 package org.bitsofinfo.es.snapmgr
 
-class Repository(rType:String, rSettings:Map[String,Object]) {
+class Repository(val name:String, val location:String) {
 
-    var x:String = rType
-    var settings:Map[String,Object] = rSettings
+    override def toString():String = {
+        "Name:" + name + " location:" + location
+    }
 
 }
