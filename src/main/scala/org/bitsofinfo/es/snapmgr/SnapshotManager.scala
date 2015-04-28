@@ -108,7 +108,6 @@ class SnapshotManager {
 
         } catch {
             case e:Exception => {
-                println(e)
                 new SnapshotResult(repoName,snapshotName,indexName,"ERROR",getExceptionMessages(e,""))
             }
         }
