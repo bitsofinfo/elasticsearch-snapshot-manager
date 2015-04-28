@@ -1,10 +1,12 @@
 package org.bitsofinfo.es.snapmgr
 
 import com.sksamuel.elastic4s._
+import com.sksamuel.elastic4s.admin._
 import com.sksamuel.elastic4s.ElasticDsl._
 import org.elasticsearch.common.transport._
 import org.elasticsearch.action.admin.cluster.state.ClusterStateRequest
 import org.elasticsearch.action.admin.cluster.snapshots.create.CreateSnapshotResponse
+import org.elasticsearch.action.admin.cluster.snapshots.get.GetSnapshotsResponse
 import scala.collection.JavaConversions._
 import scala.collection.immutable._
 
@@ -106,11 +108,27 @@ class SnapshotManager {
 
         } catch {
             case e:Exception => {
+                println(e)
                 new SnapshotResult(repoName,snapshotName,indexName,"ERROR",getExceptionMessages(e,""))
             }
         }
     }
 
+
+    def getSnapshots(client:ElasticClient, repoName:String):List[Snapshot] = {
+
+        val response:GetSnapshotsResponse = client.execute {
+            com.sksamuel.elastic4s.ElasticDsl.get snapshot Seq() from repoName
+            }.await(Duration(30000,MILLISECONDS))
+
+        val snapshots = ListBuffer[Snapshot]()
+
+        for(info <- response.getSnapshots()) {
+            snapshots += new Snapshot(repoName,info.name(),info.indices()(0),info.successfulShards(),info.startTime,info.endTime)
+        }
+
+        snapshots.toList
+    }
 
     def promptForHostConfigProvider():HostConfigProvider = {
         print("Enter target SSH host : ")
