@@ -35,6 +35,8 @@ import scala.concurrent.duration._
 import org.json4s._
 import org.json4s.native.JsonMethods._
 
+import java.io._
+
 
 // [repositoryRoot]/index
 //      {"snapshots":["snap99","snap102","vectorprime","snap1","snap55","snap56","snap57","ls1","snap100","snap101"]}
@@ -79,6 +81,15 @@ import org.json4s.native.JsonMethods._
         "written_by" : "4.10.3",
         "meta_hash" : "P9dsFxNMdWNlbmU0NlNlZ21lbnRJbmZvAAAAAQY0LjEwLjMAAFHn/wAAAAoJdGltZXN0YW1wDTE0MjQ4MjExNTUyMjMLbWVyZ2VGYWN0b3ICMTAKb3MudmVyc2lvbhoyLjYuMzItNDMxLjE3LjEuZWw2Lng4Nl82NAJvcwVMaW51eA5sdWNlbmUudmVyc2lvbgY0LjEwLjMGc291cmNlBW1lcmdlB29zLmFyY2gFYW1kNjQTbWVyZ2VNYXhOdW1TZWdtZW50cwItMQxqYXZhLnZlcnNpb24IMS43LjBfNTULamF2YS52ZW5kb3IST3JhY2xlIENvcnBvcmF0aW9uAAAADRBfbTYyX2VzMDkwXzAudGlwFF9tNjJfTHVjZW5lNDEwXzAuZHZkB19tNjIuc2kQX202Ml9lczA5MF8wLmRvYxRfbTYyX0x1Y2VuZTQxMF8wLmR2bQhfbTYyLm52bRBfbTYyX2VzMDkwXzAuYmxtCF9tNjIubnZkCF9tNjIuZmR0EF9tNjJfZXMwOTBfMC5wb3MIX202Mi5mZHgQX202Ml9lczA5MF8wLnRpbQhfbTYyLmZubcAok+gAAAAAAAAAAJFE5YA="
     }, ........
+
+
+    import org.bitsofinfo.es.snapmgr._
+    val sm = new SnapshotManager
+    val snapshot = sm.getSnapshot(sm.client,"dog","ls1")
+    val hostconfig = sm.promptForHostConfigProvider
+    sm.createManifestFile("/tmp/manifest1",sm.buildSnapshotManifest(sm.client,"/tmp/dog",snapshot))
+    sm.createSnapshotTarball("localhost",hostconfig,"/tmp/dog","/tmp/manifest1","/tmp","/tmp/zz2")
+
 */
 class SnapshotManager {
 
@@ -210,20 +221,23 @@ class SnapshotManager {
 
         val snapshotName = snapshot.snapshotName
 
+
+        // build manifest relative from repositoryRoot
         val manifest = ListBuffer[String]()
-        manifest += repositoryRoot + "/index"
-        manifest += repositoryRoot + "/snapshot-" + snapshotName
-        manifest += repositoryRoot + "/metadata-" + snapshotName
+        manifest += "index"
+        manifest += "snapshot-" + snapshotName
+        manifest += "metadata-" + snapshotName
+        manifest += "indices/" + snapshot.indexName + "/snapshot-" + snapshotName
 
         for (shardNum <- (0 to (snapshot.successfulShards-1))) {
 
-            val segmentsInfoFile = repositoryRoot + "/indices/" + snapshot.indexName + "/" + shardNum + "/snapshot-" + snapshotName
+            val segmentsInfoFile = "indices/" + snapshot.indexName + "/" + shardNum + "/snapshot-" + snapshotName
             manifest += segmentsInfoFile
 
             // pull this file above, parse it from JSON, get the 'files' array, to collect each segment filename
             // then add each segment filename to the manifest under the same path
-            for (segmentFile <- getSegmentFiles(segmentsInfoFile)) {
-                manifest += repositoryRoot + "/indices/" + snapshot.indexName + "/" + shardNum + "/" + segmentFile.name
+            for (segmentFile <- getSegmentFiles(repositoryRoot + "/" + segmentsInfoFile)) {
+                manifest += "indices/" + snapshot.indexName + "/" + shardNum + "/" + segmentFile.name
             }
         }
 
@@ -236,6 +250,41 @@ class SnapshotManager {
         SSH(hostname,hostConfigProvider) { client =>
             client.download(remoteFilePath,targetLocalFilePath)
         }
+    }
+
+    def createSnapshotTarball(hostname:String,
+                              hostConfigProvider:HostConfigProvider,
+                              repositoryRoot:String,
+                              localManifestFilePath:String,
+                              remoteTarballTargetDir:String,
+                              localTarballTargetDir:String):Either[String,Unit] = {
+
+        SSH(hostname,hostConfigProvider) { client =>
+
+            val remoteManifestFilePath = "/tmp/manifest"
+
+            // upload to the node
+            client.upload(localManifestFilePath,remoteManifestFilePath)
+
+            // tar up the files
+            val remoteSnapshotTarballPath = remoteTarballTargetDir + "/snapshotfiles.tar.gz"
+            client.exec("cd " + repositoryRoot + "; tar -cvzf " + remoteSnapshotTarballPath + " -T " + remoteManifestFilePath)
+
+            // download the [targetDir]/x.tar to local directory
+            client.download(remoteSnapshotTarballPath,localTarballTargetDir)
+        }
+    }
+
+
+    def createManifestFile(manifestFilePath:String, manifestPaths:List[String]):Unit = {
+
+        val writer = new PrintWriter(new File(manifestFilePath))
+
+        for(file <- manifestPaths) {
+            writer.write(file.name+"\n")
+        }
+
+        writer.close
     }
 
 
