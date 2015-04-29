@@ -14,7 +14,8 @@ lazy val root = (project in file(".")).
   "com.decodified" %% "scala-ssh" % "0.7.0",
   "org.bouncycastle" % "bcprov-jdk16" % "1.46",
   "com.jcraft" % "jzlib" % "1.1.3",
-  "com.sksamuel.elastic4s" %% "elastic4s" % "1.5.5"
+  "com.sksamuel.elastic4s" %% "elastic4s" % "1.5.5",
+  "org.json4s" %% "json4s-native" % "3.2.11"
 )
 
 //SSH("xx.xx.xx.xx") { client =>

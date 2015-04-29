@@ -10,6 +10,8 @@ import org.elasticsearch.action.admin.cluster.snapshots.get.GetSnapshotsResponse
 import scala.collection.JavaConversions._
 import scala.collection.immutable._
 
+import scala.io.Source
+
 import scala.collection.mutable.{ ListBuffer }
 import org.elasticsearch.cluster.node._
 import org.elasticsearch.common.transport.TransportAddress
@@ -29,6 +31,9 @@ import com.decodified.scalassh._
 import scala.io.StdIn
 
 import scala.concurrent.duration._
+
+import org.json4s._
+import org.json4s.native.JsonMethods._
 
 
 // [repositoryRoot]/index
@@ -75,7 +80,6 @@ import scala.concurrent.duration._
         "meta_hash" : "P9dsFxNMdWNlbmU0NlNlZ21lbnRJbmZvAAAAAQY0LjEwLjMAAFHn/wAAAAoJdGltZXN0YW1wDTE0MjQ4MjExNTUyMjMLbWVyZ2VGYWN0b3ICMTAKb3MudmVyc2lvbhoyLjYuMzItNDMxLjE3LjEuZWw2Lng4Nl82NAJvcwVMaW51eA5sdWNlbmUudmVyc2lvbgY0LjEwLjMGc291cmNlBW1lcmdlB29zLmFyY2gFYW1kNjQTbWVyZ2VNYXhOdW1TZWdtZW50cwItMQxqYXZhLnZlcnNpb24IMS43LjBfNTULamF2YS52ZW5kb3IST3JhY2xlIENvcnBvcmF0aW9uAAAADRBfbTYyX2VzMDkwXzAudGlwFF9tNjJfTHVjZW5lNDEwXzAuZHZkB19tNjIuc2kQX202Ml9lczA5MF8wLmRvYxRfbTYyX0x1Y2VuZTQxMF8wLmR2bQhfbTYyLm52bRBfbTYyX2VzMDkwXzAuYmxtCF9tNjIubnZkCF9tNjIuZmR0EF9tNjJfZXMwOTBfMC5wb3MIX202Mi5mZHgQX202Ml9lczA5MF8wLnRpbQhfbTYyLmZubcAok+gAAAAAAAAAAJFE5YA="
     }, ........
 */
-
 class SnapshotManager {
 
     val client = ElasticClient.remote("localhost",9300)
@@ -202,24 +206,53 @@ class SnapshotManager {
     }
 
 
-    def buildSnapshotManifest(client:ElasticClient, repositoryRoot:String, snapshotName:String):List[String] = {
+    def buildSnapshotManifest(client:ElasticClient, repositoryRoot:String, snapshot:Snapshot):List[String] = {
+
+        val snapshotName = snapshot.snapshotName
 
         val manifest = ListBuffer[String]()
         manifest += repositoryRoot + "/index"
         manifest += repositoryRoot + "/snapshot-" + snapshotName
         manifest += repositoryRoot + "/metadata-" + snapshotName
 
-        /*
-        for (shardNum <- (0 to (totalShards-1))) {
-            manifest += repositoryRoot + "/indices/" + indexName + "/" + shardNum + "/snapshot-" + snapshotName
+        for (shardNum <- (0 to (snapshot.successfulShards-1))) {
+
+            val segmentsInfoFile = repositoryRoot + "/indices/" + snapshot.indexName + "/" + shardNum + "/snapshot-" + snapshotName
+            manifest += segmentsInfoFile
 
             // pull this file above, parse it from JSON, get the 'files' array, to collect each segment filename
             // then add each segment filename to the manifest under the same path
+            for (segmentFile <- getSegmentFiles(segmentsInfoFile)) {
+                manifest += repositoryRoot + "/indices/" + snapshot.indexName + "/" + shardNum + "/" + segmentFile.name
+            }
         }
-        */
+
 
         manifest.toList
 
     }
+
+    def downloadFile(hostname:String, hostConfigProvider:HostConfigProvider, remoteFilePath:String, targetLocalFilePath:String):Either[String,Unit] = {
+        SSH(hostname,hostConfigProvider) { client =>
+            client.download(remoteFilePath,targetLocalFilePath)
+        }
+    }
+
+
+    def getSegmentFiles(pathToShardSnapshotInfoFile:String):List[SnapshotFile] = {
+
+        implicit val formats = DefaultFormats
+
+        val source = scala.io.Source.fromFile(pathToShardSnapshotInfoFile)
+        val lines = try source.mkString finally source.close()
+        val asJsonObj = parse(lines)
+        val files = asJsonObj \\ "files"
+
+        files.extract[List[SnapshotFile]]
+    }
+
+
+
+
 
 }
