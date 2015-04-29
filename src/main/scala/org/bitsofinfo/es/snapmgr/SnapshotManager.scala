@@ -4,6 +4,7 @@ import com.sksamuel.elastic4s._
 import com.sksamuel.elastic4s.admin._
 import com.sksamuel.elastic4s.ElasticDsl._
 import org.elasticsearch.common.transport._
+import org.elasticsearch.action.admin.indices.status._
 import org.elasticsearch.action.admin.cluster.state.ClusterStateRequest
 import org.elasticsearch.action.admin.cluster.snapshots.create.CreateSnapshotResponse
 import org.elasticsearch.action.admin.cluster.snapshots.get.GetSnapshotsResponse
@@ -114,11 +115,22 @@ class SnapshotManager {
 
             val node:DiscoveryNode = kv.value
 
-            nodes += new Node(node.name, toIP(node.address), node.isDataNode)
+            nodes += new Node(node.id, node.name, toIP(node.address), node.isDataNode)
         }
 
         nodes.toList
     }
+
+    def getPrimaryNodesForIndex(client:ElasticClient, indexName:String):List[Node] = {
+
+        val allNodes = discoverNodes(client)
+
+        val response:GetSnapshotsResponse = client.execute { status indexName }.await
+
+        }
+
+    }
+
 
     def getRepositories(client:ElasticClient, repoNames:Seq[String] = Seq("_all")):List[Repository] = {
 
