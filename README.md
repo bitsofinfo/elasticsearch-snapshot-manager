@@ -5,7 +5,7 @@ Scala tool for managing elasticsearch snapshots. Creating, deleting, downloading
 
 This is IN PROGRESS, all that is supported right now is coverage for the scenario described in "Overview below"
 
-Rudimentary at this point but works. This little test project involved 3 new things for me: Scala itself!, the elasticsearch java API, coupled with the elastic4s library...
+Rudimentary at this point but works. This little project involved 3 brand new things for me: Scala itself!, the elasticsearch java API, coupled with the elastic4s library...so its a pretty rough impl.
 
 ## Overview
 
@@ -38,9 +38,9 @@ This tool is intended to aid with the following scenario:
 * Scala SBT: 0.13.8 - http://www.scala-sbt.org/download.html
 
 1. git clone [this project]
-2. From the project root: `sbt assembly`
-3. Take the resulting jar from `target/scala-[version]/elasticsearch-snapshot-manager-assembly-1.0.jar` and copy it to a machine that has access to all your elasticsearch cluster nodes on port 9300
-4. run from a box w/ full access to your es cluster @9300)
+2. From the project root execute: `sbt assembly`
+3. Take the resulting jar from:   `target/scala-[version]/elasticsearch-snapshot-manager-assembly-1.0.jar` and copy it to a machine that has access to all your elasticsearch cluster nodes running on port 9300
+4. run from a box w/ full access to your es cluster @9300
 ```
 java -jar elasticsearch-snapshot-manager-assembly-1.0.jar [esSeedHostname] [pathToEmptyLocalWorkDir]
 ```
