@@ -23,3 +23,13 @@ lazy val root = (project in file(".")).
 //    println("Result:\n" + result.stdOutAsString())
  // }
 //}
+
+test in assembly := {}
+mainClass in assembly := Some("org.bitsofinfo.es.snapmgr.Runner")
+
+assemblyExcludedJars in assembly := {
+  val cp = (fullClasspath in assembly).value
+  cp.filter(item => {
+      item.data.getName == "bcprov-jdk15on-1.50.jar" || item.data.getName == "bcpkix-jdk15on-1.50.jar"
+  })
+}
