@@ -40,4 +40,7 @@ This tool is intended to aid with the following scenario:
 1. git clone [this project]
 2. From the project root: `sbt assembly`
 3. Take the resulting jar from `target/scala-[version]/elasticsearch-snapshot-manager-assembly-1.0.jar` and copy it to a machine that has access to all your elasticsearch cluster nodes on port 9300
-4. run `java -jar elasticsearch-snapshot-manager-assembly-1.0.jar [esSeedHostname] [pathToEmptyLocalWorkDir]`
+4. run from a box w/ full access to your es cluster @9300)
+```
+java -jar elasticsearch-snapshot-manager-assembly-1.0.jar [esSeedHostname] [pathToEmptyLocalWorkDir]
+```
