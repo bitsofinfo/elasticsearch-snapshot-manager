@@ -3,6 +3,8 @@ Scala tool for managing elasticsearch snapshots. Creating, deleting, downloading
 
 ## Status
 
+**alpha code**
+
 This is IN PROGRESS, all that is supported right now is coverage for the scenario described in "Overview below"
 
 Rudimentary at this point but works. This little project involved 3 brand new things for me: Scala itself!, the elasticsearch java API, coupled with the elastic4s library...so its a pretty rough impl.
