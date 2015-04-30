@@ -33,7 +33,8 @@ This tool is intended to aid with the following scenario:
 
 ## Usage/Building
 
-* Scala: 2.11.5 - http://www.scala-lang.org/download/  
+* Java: 1.7+
+* Scala: 2.11.5 - http://www.scala-lang.org/download/
 * Scala SBT: 0.13.8 - http://www.scala-sbt.org/download.html
 
 1. git clone [this project]
