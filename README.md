@@ -31,7 +31,10 @@ This tool is intended to aid with the following scenario:
 6. Finally it downloads all the individual tarballs to your local working dir (specified on command start)
 7. You can then run a command like `for i in *.tar.gz; do tar -xvf $i; done` to consolidate them all onto another machine to restore the snapshot somewhere else.
 
-## Usage
+## Usage/Building
+
+* Scala: 2.11.5 - http://www.scala-lang.org/download/  
+* Scala SBT: 0.13.8 - http://www.scala-sbt.org/download.html
 
 1. git clone [this project]
 2. From the project root: `sbt assembly`
