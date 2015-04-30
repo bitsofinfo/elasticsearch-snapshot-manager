@@ -16,6 +16,8 @@ This tool is intended to aid with the following scenario:
 3. You need a way to execute the snapshot, then easily collect all the different parts of that snapshot which are located across N nodes across your cluster
 4. This tool is intended to automate that process...
 
+![Alt text](/diagram1.png "Diagram1")
+
 ## Prerequisites
 
 1. This must be run from a machine that has direct access to port 9300 on all nodes of your elasticsearch cluster
