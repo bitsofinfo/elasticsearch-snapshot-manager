@@ -10,6 +10,7 @@ lazy val root = (project in file(".")).
 
 
  libraryDependencies ++= Seq(
+  "com.typesafe.scala-logging" %% "scala-logging" % "3.1.0",
   "ch.qos.logback" % "logback-classic" % "1.1.2",
   "com.decodified" %% "scala-ssh" % "0.7.0",
   "org.bouncycastle" % "bcprov-jdk16" % "1.46",

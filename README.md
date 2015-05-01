@@ -31,8 +31,8 @@ This tool is intended to aid with the following scenario:
 2. Next it prompts you to pick a snapshot you want to consolidate from that repository
 3. Prompts you for the username/password for the SSH user it will connect to all nodes with
 4. Proceeds to discover all nodes in the cluster, determine which nodes actually have relevant snapshot metadata/segment files
-5. Connects to each relevant node, creates a tar.gz under /tmp (locally on each es node)
-6. Finally it downloads all the individual tarballs to your local working dir (specified on command start)
+5. For each node, forks and connects to each relevant node in parallel, creates a tar.gz under /tmp (locally on each es node)
+6. Finally it downloads all the individual tarballs (in parallel) to your local working dir (specified on command start)
 7. You can then run a command like `for i in *.tar.gz; do tar -xvf $i; done` to consolidate them all onto another machine to restore the snapshot somewhere else.
 
 ## Usage/Building
