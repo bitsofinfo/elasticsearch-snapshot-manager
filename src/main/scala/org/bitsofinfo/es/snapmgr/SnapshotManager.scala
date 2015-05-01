@@ -256,7 +256,7 @@ class SnapshotManager(val esSeedHost:String) {
     }
 
 
-    def buildSnapshotManifest(client:ElasticClient, localSegmentsInfoFilePath:String, snapshot:Snapshot):List[String] = {
+    def buildSnapshotManifest(client:ElasticClient, forNode:Node, forShard:Int, localSegmentsInfoFilePath:String, snapshot:Snapshot):List[String] = {
 
         val snapshotName = snapshot.snapshotName
 
@@ -278,7 +278,9 @@ class SnapshotManager(val esSeedHost:String) {
 
                 // localSegmentsInfoFilePath: parse it from JSON, get the 'files' array, to collect each segment filename
                 // then add each segment filename to the manifest under the same path
-                for (segmentFile <- getSegmentFiles(localSegmentsInfoFilePath)) {
+                val segmentFiles = getSegmentFiles(localSegmentsInfoFilePath)
+                logger.info("Node: " + forNode.address+":"+forNode.port + " shard " + forShard + " contains " + segmentFiles.length + " snapshot segment files...")
+                for (segmentFile <- segmentFiles) {
                     manifest += "indices/" + snapshot.indexName + "/" + shardNum + "/" + segmentFile.name
                 }
             }
@@ -306,7 +308,7 @@ class SnapshotManager(val esSeedHost:String) {
 
     }
 
-    def createdAndDownloadSnapshotTarball(hostname:String,
+    def createAndDownloadSnapshotTarball(hostname:String,
                                           nodePort:Int,
                                           repoName:String,
                                           snapshotName:String,
@@ -325,11 +327,14 @@ class SnapshotManager(val esSeedHost:String) {
             client.upload(localManifestFilePath,remoteManifestFilePath)
 
             // tar up the files
-            val remoteSnapshotTarballPath = remoteTarballTargetDir + "/" + hostname + "_"+ nodePort + "-" + repoName + "-" + snapshotName + "-" +indexName+"-snapshotfiles.tar.gz"
+            val tarballFileName = hostname + "_"+ nodePort + "-" + repoName + "-" + snapshotName + "-" +indexName+"-snapshotfiles.tar.gz"
+            val remoteSnapshotTarballPath = remoteTarballTargetDir + "/" + tarballFileName
             client.exec("cd " + repositoryRoot + "; tar -cvzf " + remoteSnapshotTarballPath + " -T " + remoteManifestFilePath)
 
             // download the [targetDir]/x.tar to local directory
             client.download(remoteSnapshotTarballPath,localTarballTargetDir)
+
+            logger.info("Downloaded tarball from: " + hostname +":" + nodePort + " stored locally @ " + localTarballTargetDir + "/" + tarballFileName)
         }
     }
 
@@ -369,10 +374,12 @@ class SnapshotManager(val esSeedHost:String) {
         repos.foreach(r => {
             println("    -> " + r.toString)
         })
-        print("Enter repository name: ")
-        val repositoryName = StdIn.readLine()
-        println()
+
+        // collect their choice and validate what they typed is legit
+        val repositoryName  = getUserInput("Snapshot repository name: ",
+                                ((input:String) => { !(repos.filter(r => r.name == input).isEmpty)}))
         val repository = getRepository(client,repositoryName)
+
 
         // get snapshots
         val snapshots = getSnapshots(client,repositoryName)
@@ -380,35 +387,34 @@ class SnapshotManager(val esSeedHost:String) {
         snapshots.foreach(s => {
             println("    -> " + s.toString)
         })
-        print("Enter snapshot to be downloaded: ")
-        val snapshotName = StdIn.readLine()
-        println()
+
+        // collect their choice and validate what they typed is legit
+        val snapshotName = getUserInput("Snapshot name to be downloaded: ",
+                                ((input:String) => { !(snapshots.filter(s => s.snapshotName == input).isEmpty)}))
         val snapshot = getSnapshot(client,repositoryName,snapshotName)
 
         // collect SSH credentials
-        print("Enter SSH username: ")
-        val username = StdIn.readLine()
-        println()
-        print("Enter SSH password: ")
-        val password = StdIn.readLine()
-        println()
+        val username = getUserInput("Enter SSH username: ")
+        val password = getUserInput("Enter SSH password: ")
 
-        print("Ready to proceed? (y/n): ");
-        val ready = StdIn.readLine()
+        val ready = getUserInput("Ready to proceed? (y/n): ");
         if (ready.trim != "y") {
-            System.exit(1)
+            logger.info("Terminating process, received something other than 'y'")
+            System.exit(0)
         }
-        println()
 
         // get all nodes, build manifest files
         // and download tarballs concurrently
+        logger.info("Discovering elasticsearch cluster nodes....")
         val allNodes = discoverNodes(client)
+        allNodes.foreach(n => logger.info("Discovered: " + n))
+
         allNodes.foreach(node => {
 
             def nodeResult:Future[ProcessResult] = processNode(node,repository,snapshot,workDir,username,password);
             nodeResult.onComplete {
-                case Success(processResult) => println(processResult)
-                case Failure(e) => println("PROCESS ERROR: " + e.getMessage)
+                case Success(processResult) => logger.info(processResult.toString)
+                case Failure(e) => logger.error("PROCESS EXCEPTION: " + e.getMessage,e)
             }
 
         })
@@ -421,7 +427,7 @@ class SnapshotManager(val esSeedHost:String) {
 
             try {
 
-                println("Working on node: " + node)
+                logger.info("Working on node: " + node)
 
                 // build ssh config for this host
                 val sshHostConfig = HostConfigProvider.hostConfig2HostConfigProvider(
@@ -434,6 +440,8 @@ class SnapshotManager(val esSeedHost:String) {
 
                     val metaDataFilesExist = remoteFileExists(node.address,sshHostConfig,repository.location + "/metadata-"+snapshot.snapshotName)
 
+                    if (metaDataFilesExist) logger.info("Node: " + node.address +":" + node.port + " contains meta-data files for snapshot")
+
                     val segmentsFile = repository.location + "/indices/" + snapshot.indexName + "/" + shardNum + "/snapshot-" + snapshot.snapshotName
                     downloadFile(node.address,
                                  sshHostConfig,
@@ -443,12 +451,14 @@ class SnapshotManager(val esSeedHost:String) {
                     // only if the node we connected to actually has some data (metadata || shard segment data)...
                     if (metaDataFilesExist || new java.io.File(localShardSegmentsInfoFile).exists) {
 
+                        logger.info("Node: " + node.address +":" + node.port + " contains snapshot segments.. proceeding to download...")
+
                         // create manifest file for shard
                         val localNodeManifestFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot.manifest"
-                        createManifestFile(localNodeManifestFile,buildSnapshotManifest(client,localShardSegmentsInfoFile,snapshot))
+                        createManifestFile(localNodeManifestFile,buildSnapshotManifest(client,node,shardNum,localShardSegmentsInfoFile,snapshot))
 
                         // create and download
-                        createdAndDownloadSnapshotTarball(node.address,
+                        createAndDownloadSnapshotTarball(node.address,
                                                          node.port,
                                                          repository.name,
                                                          snapshot.snapshotName,
@@ -476,5 +486,16 @@ class SnapshotManager(val esSeedHost:String) {
         }
 
     }
+
+    def getUserInput(query:String, validator:(String) => Boolean = (input:String) => true):String = {
+		var input:String = null;
+		while(input == null || input.trim.isEmpty() || !validator(input)) {
+			print(query);
+			input = StdIn.readLine()
+            println()
+		}
+
+		return input;
+	}
 
 }
