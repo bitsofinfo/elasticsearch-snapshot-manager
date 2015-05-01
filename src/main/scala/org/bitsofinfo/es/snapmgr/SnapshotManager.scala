@@ -366,7 +366,7 @@ class SnapshotManager(val esSeedHost:String) {
 
 
 
-    def collectAllSnapshotTarballs(client:ElasticClient, workDir:String):Unit = {
+    def collectAllSnapshotTarballs(client:ElasticClient, workDir:String, minutesToWait:Long):Unit = {
 
         // get repository
         val repos = getRepositories(client)
@@ -409,15 +409,22 @@ class SnapshotManager(val esSeedHost:String) {
         val allNodes = discoverNodes(client)
         allNodes.foreach(n => logger.info("Discovered: " + n))
 
+        val workers = new ListBuffer[Future[ProcessResult]]
+
         allNodes.foreach(node => {
 
             def nodeResult:Future[ProcessResult] = processNode(node,repository,snapshot,workDir,username,password);
+            workers += nodeResult
             nodeResult.onComplete {
                 case Success(processResult) => logger.info(processResult.toString)
                 case Failure(e) => logger.error("PROCESS EXCEPTION: " + e.getMessage,e)
             }
 
         })
+
+        workers.foreach(w => Await.result(w,minutesToWait minutes))
+
+        logger.info("COMPLETE! All downloaded tarballs located @ " + workDir)
 
     }
 
