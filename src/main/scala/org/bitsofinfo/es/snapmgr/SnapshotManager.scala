@@ -273,17 +273,17 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
         // if actual shard segment info file exists... build that...
         if (new java.io.File(localSegmentsInfoFilePath).exists) {
-            for (shardNum <- (0 to (snapshot.successfulShards-1))) {
 
-                manifest += "indices/" + snapshot.indexName + "/" + shardNum + "/snapshot-" + snapshotName
+            logger.debug("Building snapshot segments manifest for shard: " + forShard + " on node: " + forNode.address + ":" + forNode.port)
 
-                // localSegmentsInfoFilePath: parse it from JSON, get the 'files' array, to collect each segment filename
-                // then add each segment filename to the manifest under the same path
-                val segmentFiles = getSegmentFiles(localSegmentsInfoFilePath)
-                logger.info("Node: " + forNode.address+":"+forNode.port + " shard " + forShard + " contains " + segmentFiles.length + " snapshot segment files...")
-                for (segmentFile <- segmentFiles) {
-                    manifest += "indices/" + snapshot.indexName + "/" + shardNum + "/" + segmentFile.name
-                }
+            manifest += "indices/" + snapshot.indexName + "/" + forShard + "/snapshot-" + snapshotName
+
+            // localSegmentsInfoFilePath: parse it from JSON, get the 'files' array, to collect each segment filename
+            // then add each segment filename to the manifest under the same path
+            val segmentFiles = getSegmentFiles(localSegmentsInfoFilePath)
+            logger.info("Node: " + forNode.address+":"+forNode.port + " shard " + forShard + " contains " + segmentFiles.length + " snapshot segment files...")
+            for (segmentFile <- segmentFiles) {
+                manifest += "indices/" + snapshot.indexName + "/" + forShard + "/" + segmentFile.name
             }
 
         }
