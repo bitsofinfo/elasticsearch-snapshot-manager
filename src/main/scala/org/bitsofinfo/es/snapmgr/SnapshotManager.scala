@@ -100,9 +100,18 @@ import java.io._
 class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     val logger = LoggerFactory.getLogger(getClass)
+
+    // map of ES client settings, all we care about is cluster.name
     val clientSettings = ImmutableSettings.settingsBuilder.put(mapAsJavaMap(Map("cluster.name"->esClusterName))).build
+
+    // create our ES client instance
     val client = ElasticClient.remote(clientSettings,esSeedHost,9300)
 
+
+    /**
+    *
+    *
+    **/
     def discoverNodes(client:ElasticClient):List[Node] = {
 
         def toIP(addr: TransportAddress):String = addr match {
@@ -133,7 +142,13 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         nodes.toList
     }
 
-    // https://groups.google.com/d/msg/elasticsearch/vrzmZpADmhc/MiADvtlBMzoJ4
+
+    /**
+    * Attempt to get the list of nodes who hold primary shards for
+    * the given indexName. Currently can't get this to reliably work due to:
+    *
+    * https://groups.google.com/d/msg/elasticsearch/vrzmZpADmhc/MiADvtlBMzoJ4
+    **/
     def getPrimaryNodesForIndex(client:ElasticClient, indexName:String):List[Node] = {
 
         val nodeMap = scala.collection.mutable.Map[String,Node]()
@@ -295,7 +310,11 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     def downloadFile(hostname:String, hostConfigProvider:HostConfigProvider, remoteFilePath:String, targetLocalFilePath:String):Either[String,Unit] = {
         SSH(hostname,hostConfigProvider) { client =>
-            client.download(remoteFilePath,targetLocalFilePath)
+
+            // node the 3rd param (listener: TransferListener) is
+            // declared implicit, so we could also just define a global
+            // variable of type TransferListener and it would pick it up
+            client.download(remoteFilePath,targetLocalFilePath)(new DownloadProgressListener("DLOAD!!!!",30))
         }
     }
 
@@ -333,7 +352,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
             client.exec("cd " + repositoryRoot + "; tar -cvzf " + remoteSnapshotTarballPath + " -T " + remoteManifestFilePath)
 
             // download the [targetDir]/x.tar to local directory
-            client.download(remoteSnapshotTarballPath,localTarballTargetDir)
+            downloadFile(hostname,hostConfigProvider,remoteSnapshotTarballPath,localTarballTargetDir)
 
             logger.info("Downloaded tarball from: " + hostname +":" + nodePort + " stored locally @ " + localTarballTargetDir + "/" + tarballFileName)
         }
@@ -442,6 +461,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
                     HostConfig(login=PasswordLogin(username,password), hostName=node.address, hostKeyVerifier=HostKeyVerifiers.DontVerify))
 
                 // connect and download
+                var downloaded:Boolean = false
                 for (shardNum <- (0 to (snapshot.successfulShards-1))) {
 
                     val localShardSegmentsInfoFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-"+snapshot.snapshotName
@@ -476,11 +496,16 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
                                                          localNodeManifestFile,
                                                          "/tmp",
                                                          workDir)
+                        downloaded = true
                     }
 
                 }
 
-                new ProcessResult(node,"Node["+node.address+":"+node.port+"] processed ok, tarball downloaded @ " + workDir,true,null)
+                if (downloaded) {
+                    new ProcessResult(node,"Node["+node.address+":"+node.port+"] processed ok, tarball downloaded @ " + workDir,true,null)
+                } else {
+                    new ProcessResult(node,"Node["+node.address+":"+node.port+"] processed ok",true,null)
+                }
 
             } catch {
                 case e:Exception => {
@@ -496,18 +521,20 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
     }
 
     def getUserInput(prompt:String, validator:(String) => Boolean = (input:String) => true, secure:Boolean=false):String = {
-		var input:String = null;
-		while(input == null || input.trim.isEmpty() || !validator(input)) {
-			print(prompt);
+
+        var input:String = null;
+
+        while(input == null || input.trim.isEmpty() || !validator(input)) {
+            print(prompt);
             if (secure) {
                 input = new String(System.console.readPassword())
             } else {
                 input = StdIn.readLine()
             }
             println()
-		}
+        }
 
-		return input;
-	}
+        return input;
+    }
 
 }
