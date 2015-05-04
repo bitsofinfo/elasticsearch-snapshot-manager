@@ -246,7 +246,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         val username = StdIn.readLine()
         println()
         print("Enter SSH password: ")
-        val password = StdIn.readLine()
+        val password = new String(System.console.readPassword())
         println()
         HostConfigProvider.hostConfig2HostConfigProvider(HostConfig(login=PasswordLogin(username,password), hostName=host, hostKeyVerifier=HostKeyVerifiers.DontVerify))
     }
@@ -377,8 +377,8 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         })
 
         // collect their choice and validate what they typed is legit
-        val repositoryName  = getUserInput("Snapshot repository name: ",
-                                ((input:String) => { !(repos.filter(r => r.name == input).isEmpty)}))
+        val repositoryName  = getUserInput(prompt="Snapshot repository name: ",
+                                    validator=((input:String) => { !(repos.filter(r => r.name == input).isEmpty)}))
         val repository = getRepository(client,repositoryName)
 
 
@@ -390,13 +390,13 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         })
 
         // collect their choice and validate what they typed is legit
-        val snapshotName = getUserInput("Snapshot name to be downloaded: ",
-                                ((input:String) => { !(snapshots.filter(s => s.snapshotName == input).isEmpty)}))
+        val snapshotName = getUserInput(prompt="Snapshot name to be downloaded: ",
+                                validator=((input:String) => { !(snapshots.filter(s => s.snapshotName == input).isEmpty)}))
         val snapshot = getSnapshot(client,repositoryName,snapshotName)
 
         // collect SSH credentials
-        val username = getUserInput("Enter SSH username: ")
-        val password = getUserInput("Enter SSH password: ")
+        val username = getUserInput(prompt="Enter SSH username: ", secure=false)
+        val password = getUserInput(prompt="Enter SSH password: ", secure=true)
 
         val ready = getUserInput("Ready to proceed? (y/n): ");
         if (ready.trim != "y") {
@@ -495,11 +495,15 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     }
 
-    def getUserInput(query:String, validator:(String) => Boolean = (input:String) => true):String = {
+    def getUserInput(prompt:String, validator:(String) => Boolean = (input:String) => true, secure:Boolean=false):String = {
 		var input:String = null;
 		while(input == null || input.trim.isEmpty() || !validator(input)) {
-			print(query);
-			input = StdIn.readLine()
+			print(prompt);
+            if (secure) {
+                input = new String(System.console.readPassword())
+            } else {
+                input = StdIn.readLine()
+            }
             println()
 		}
 
