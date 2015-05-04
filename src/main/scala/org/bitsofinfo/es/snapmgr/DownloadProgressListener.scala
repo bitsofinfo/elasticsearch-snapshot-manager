@@ -12,6 +12,8 @@ class DownloadProgressListener(val logPrefix:String,
 
     val logger = LoggerFactory.getLogger(getClass)
 
+    var lastLoggedAt:Long = -1
+
     override def directory(name:String):TransferListener = {
         val newTarget = myPath concat name;
         logger.debug(logPrefix + "started transferring directory " + newTarget);
@@ -27,7 +29,14 @@ class DownloadProgressListener(val logPrefix:String,
     }
 
     override def reportProgress(transferred:Long):Unit = {
-        logger.debug(logPrefix + " transferred " + ((transferred * 100) / mySize) + "% of " + myPath);
+
+        if (transferred == mySize || lastLoggedAt == -1 ||
+            (((System.currentTimeMillis - lastLoggedAt) / 1000) > reportEveryNSeconds)) {
+
+            logger.debug(logPrefix + " transferred " + ((transferred * 100) / mySize) + "% of " + myPath);
+            lastLoggedAt = System.currentTimeMillis
+        }
+
     }
 
 }

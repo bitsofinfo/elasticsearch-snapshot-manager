@@ -1,7 +1,7 @@
 <configuration>
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} TKD [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{0} - %msg%n</pattern>
         </encoder>
     </appender>
 
@@ -10,7 +10,7 @@
         <file>/tmp/test.log</file>
         <append>true</append>
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} TKD [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
     -->
@@ -22,6 +22,7 @@
 
     <logger name="org.bitsofinfo" level="DEBUG"/>
     <logger name="net.schmizz" level="WARN"/>
+    <logger name="net.schmizz.sshj.xfer.scp.SCPEngine" level="ERROR"/>
     <logger name="com.decodified.scalassh" level="WARN"/>
     <logger name="n.s.sshj" level="WARN"/>
     <logger name="org.elasticsearch" level="INFO"/>

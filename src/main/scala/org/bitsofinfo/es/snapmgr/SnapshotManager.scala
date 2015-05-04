@@ -314,7 +314,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
             // node the 3rd param (listener: TransferListener) is
             // declared implicit, so we could also just define a global
             // variable of type TransferListener and it would pick it up
-            client.download(remoteFilePath,targetLocalFilePath)(new DownloadProgressListener("DLOAD!!!!",30))
+            client.download(remoteFilePath,targetLocalFilePath)(new DownloadProgressListener("",30))
         }
     }
 
@@ -372,7 +372,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     def getSegmentFiles(pathToShardSnapshotInfoFile:String):List[SnapshotFile] = {
 
-        println("getSegmentFiles() reading: " + pathToShardSnapshotInfoFile)
+        logger.debug("getSegmentFiles() reading: " + pathToShardSnapshotInfoFile)
 
         implicit val formats = DefaultFormats
 
