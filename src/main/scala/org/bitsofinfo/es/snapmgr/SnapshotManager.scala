@@ -97,10 +97,11 @@ import java.io._
     sm.createSnapshotTarball("localhost",hostconfig,"/tmp/dog","/tmp/manifest1","/tmp","/tmp/zz2")
 
 */
-class SnapshotManager(val esSeedHost:String) {
+class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     val logger = LoggerFactory.getLogger(getClass)
-    val client = ElasticClient.remote(esSeedHost,9300)
+    val clientSettings = ImmutableSettings.settingsBuilder.put(mapAsJavaMap(Map("cluster.name"->esClusterName))).build
+    val client = ElasticClient.remote(clientSettings,esSeedHost,9300)
 
     def discoverNodes(client:ElasticClient):List[Node] = {
 
