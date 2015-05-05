@@ -1,13 +1,6 @@
 package org.bitsofinfo.es.snapmgr
 
-import com.sksamuel.elastic4s._
-import com.sksamuel.elastic4s.admin._
-import com.sksamuel.elastic4s.ElasticDsl._
-import org.elasticsearch.common.transport._
-import org.elasticsearch.action.admin.indices.recovery._
-import org.elasticsearch.action.admin.cluster.state.ClusterStateRequest
-import org.elasticsearch.action.admin.cluster.snapshots.create.CreateSnapshotResponse
-import org.elasticsearch.action.admin.cluster.snapshots.get.GetSnapshotsResponse
+
 import scala.collection.JavaConversions._
 import scala.collection.immutable._
 
@@ -18,18 +11,7 @@ import scala.concurrent._
 import scala.util.{Success, Failure}
 import ExecutionContext.Implicits.global
 import scala.collection.mutable.{ ListBuffer }
-import org.elasticsearch.cluster.node._
-import org.elasticsearch.common.transport.TransportAddress
-import org.elasticsearch.cluster.metadata.RepositoryMetaData
-import org.elasticsearch.action.admin.cluster.repositories.get._
-import org.elasticsearch.action.admin.cluster.repositories.put._
-import org.elasticsearch.action.admin.cluster.repositories.delete._
-import org.elasticsearch.action.admin.cluster.repositories._
-import org.elasticsearch.common.settings._
-import org.elasticsearch.common.settings.ImmutableSettings.Builder
 
-import org.elasticsearch.transport.RemoteTransportException
-import org.elasticsearch.snapshots.InvalidSnapshotNameException
 
 import com.decodified.scalassh._
 
@@ -42,6 +24,7 @@ import org.json4s.native.JsonMethods._
 
 import java.io._
 
+import org.bitsofinfo.es.snapmgr.util.getExceptionMessages
 
 
 // [repositoryRoot]/index
@@ -101,157 +84,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     val logger = LoggerFactory.getLogger(getClass)
 
-    // map of ES client settings, all we care about is cluster.name
-    val clientSettings = ImmutableSettings.settingsBuilder.put(mapAsJavaMap(Map("cluster.name"->esClusterName))).build
-
-    // create our ES client instance
-    val client = ElasticClient.remote(clientSettings,esSeedHost,9300)
-
-
-    /**
-    *
-    *
-    **/
-    def discoverNodes(client:ElasticClient):List[Node] = {
-
-        def toIP(addr: TransportAddress):String = addr match {
-            case addr:InetSocketTransportAddress => addr.address.getHostName
-            case _ => addr.toString
-        }
-
-        def toPort(addr: TransportAddress):Int = addr match {
-            case addr:InetSocketTransportAddress => addr.address.getPort
-            case _ => -1
-        }
-
-        val clusterStateRequest = new ClusterStateRequest().nodes(true)
-        val clusterStateResponse = client.admin.cluster.state(clusterStateRequest).get()
-
-        var discoveryNodes = clusterStateResponse.getState.getNodes()
-        var nodeId2DiscoveryNodeMap = discoveryNodes.nodes
-
-        val nodes = ListBuffer[Node]()
-
-        for(kv <- nodeId2DiscoveryNodeMap.iterator) {
-
-            val node:DiscoveryNode = kv.value
-
-            nodes += new Node(node.id, node.name, toIP(node.address), node.isDataNode, toPort(node.address))
-        }
-
-        nodes.toList
-    }
-
-
-    /**
-    * Attempt to get the list of nodes who hold primary shards for
-    * the given indexName. Currently can't get this to reliably work due to:
-    *
-    * https://groups.google.com/d/msg/elasticsearch/vrzmZpADmhc/MiADvtlBMzoJ4
-    **/
-    def getPrimaryNodesForIndex(client:ElasticClient, indexName:String):List[Node] = {
-
-        val nodeMap = scala.collection.mutable.Map[String,Node]()
-        discoverNodes(client).foreach(node => {
-            nodeMap += (node.nodeId -> node)
-        })
-
-        val primaryNodes = ListBuffer[Node]()
-
-        val response:RecoveryResponse = client.execute { recover index indexName }.await
-
-        response.shardResponses.values.foreach(srrList => {
-                srrList.foreach(shardRecoveryResponse => {
-
-                    val recoveryState = shardRecoveryResponse.recoveryState;
-                    println(recoveryState.getType)
-                    if (recoveryState.getPrimary) {
-                        primaryNodes += nodeMap(recoveryState.getSourceNode.getId)
-                    }
-                })
-        })
-
-        primaryNodes.toList
-    }
-
-
-    def getRepositories(client:ElasticClient, repoNames:Seq[String] = Seq("_all")):List[Repository] = {
-
-        val listReposRequest = new GetRepositoriesRequest(repoNames.toArray)
-        val listReposResponse = client.admin.cluster.getRepositories(listReposRequest).get()
-
-        val repos = ListBuffer[Repository]()
-
-        for(metaData <- listReposResponse.iterator) {
-            repos += new Repository(metaData.name,metaData.settings.get("location"))
-        }
-
-        repos.toList
-    }
-
-    def getRepository(client:ElasticClient, repoName:String):Repository = {
-        val foundRepos = getRepositories(client, Seq(repoName))
-        foundRepos.head
-    }
-
-    def createFSRepository(client:ElasticClient, repoName:String, verify:Boolean, compress:Boolean, location:String):Boolean = {
-
-        val putRepoRequest = new PutRepositoryRequest(repoName)
-        putRepoRequest.`type`("fs").verify(verify)
-        val settings = ImmutableSettings.settingsBuilder.put(mapAsJavaMap(Map("compress"->compress.toString, "location"->location))).build
-        putRepoRequest.settings(settings)
-
-        val putRepoResponse = client.admin.cluster.putRepository(putRepoRequest).get()
-        putRepoResponse.isAcknowledged
-
-    }
-
-    def deleteRepository(client:ElasticClient, repoName:String):Boolean = {
-
-        val deleteRepoRequest = new DeleteRepositoryRequest(repoName)
-        val deleteRepoResponse = client.admin.cluster.deleteRepository(deleteRepoRequest).get()
-        deleteRepoResponse.isAcknowledged
-
-    }
-
-    def createSnapshot(client:ElasticClient, repoName:String, snapshotName:String, indexName:String):SnapshotResult = {
-
-        try {
-            val response:CreateSnapshotResponse = client.execute {
-                snapshot create snapshotName in repoName waitForCompletion true index indexName
-            }.await(Duration(30000,MILLISECONDS))
-
-            val info = response.getSnapshotInfo
-
-            new SnapshotResult(repoName,snapshotName,indexName,info.state.toString,info.state.toString,info.successfulShards,info.startTime,info.endTime)
-
-        } catch {
-            case e:Exception => {
-                new SnapshotResult(repoName,snapshotName,indexName,"ERROR",getExceptionMessages(e,""))
-            }
-        }
-    }
-
-
-    def getSnapshots(client:ElasticClient, repoName:String, snapshotNames:Seq[String] = Seq()):List[Snapshot] = {
-
-        val response:GetSnapshotsResponse = client.execute {
-            com.sksamuel.elastic4s.ElasticDsl.get snapshot snapshotNames from repoName
-            }.await(Duration(30000,MILLISECONDS))
-
-        val snapshots = ListBuffer[Snapshot]()
-
-        for(info <- response.getSnapshots()) {
-            snapshots += new Snapshot(repoName,info.name(),info.indices()(0),info.successfulShards(),info.startTime,info.endTime)
-        }
-
-        snapshots.toList
-    }
-
-    def getSnapshot(client:ElasticClient, repoName:String, snapshotName:String):Snapshot = {
-        val foundSnapshots = getSnapshots(client,repoName,Seq(snapshotName))
-        foundSnapshots.head
-    }
+    val esService = new ElasticService(esSeedHost,esClusterName)
 
     def promptForHostConfigProvider():HostConfigProvider = {
         print("Enter target SSH host : ")
@@ -267,12 +100,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
     }
 
 
-    def getExceptionMessages(e:Throwable, msg:String):String = {
-        if (e.getCause != null) getExceptionMessages(e.getCause, (msg +"\n"+e.getMessage)) else (msg+"\n"+e.getMessage)
-    }
-
-
-    def buildSnapshotManifest(client:ElasticClient, forNode:Node, forShard:Int, localSegmentsInfoFilePath:String, snapshot:Snapshot):List[String] = {
+    def buildSnapshotManifest(forNode:Node, forShard:Int, localSegmentsInfoFilePath:String, snapshot:Snapshot):List[String] = {
 
         val snapshotName = snapshot.snapshotName
 
@@ -363,7 +191,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         val writer = new PrintWriter(new File(manifestFilePath))
 
         for(file <- manifestPaths) {
-            writer.write(file.name+"\n")
+            writer.write(file+"\n")
         }
 
         writer.close
@@ -386,10 +214,10 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
 
 
-    def collectAllSnapshotTarballs(client:ElasticClient, workDir:String, minutesToWait:Long):Unit = {
+    def collectAllSnapshotTarballs(workDir:String, minutesToWait:Long):Unit = {
 
         // get repository
-        val repos = getRepositories(client)
+        val repos = esService.getRepositories()
         println("Available snapshot repositories:")
         repos.foreach(r => {
             println("    -> " + r.toString)
@@ -398,11 +226,11 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         // collect their choice and validate what they typed is legit
         val repositoryName  = getUserInput(prompt="Snapshot repository name: ",
                                     validator=((input:String) => { !(repos.filter(r => r.name == input).isEmpty)}))
-        val repository = getRepository(client,repositoryName)
+        val repository = esService.getRepository(repositoryName)
 
 
         // get snapshots
-        val snapshots = getSnapshots(client,repositoryName)
+        val snapshots = esService.getSnapshots(repositoryName)
         println("Available snapshots within '"+repositoryName+"':")
         snapshots.foreach(s => {
             println("    -> " + s.toString)
@@ -411,7 +239,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         // collect their choice and validate what they typed is legit
         val snapshotName = getUserInput(prompt="Snapshot name to be downloaded: ",
                                 validator=((input:String) => { !(snapshots.filter(s => s.snapshotName == input).isEmpty)}))
-        val snapshot = getSnapshot(client,repositoryName,snapshotName)
+        val snapshot = esService.getSnapshot(repositoryName,snapshotName)
 
         // collect SSH credentials
         val username = getUserInput(prompt="Enter SSH username: ", secure=false)
@@ -426,7 +254,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         // get all nodes, build manifest files
         // and download tarballs concurrently
         logger.info("Discovering elasticsearch cluster nodes....")
-        val allNodes = discoverNodes(client)
+        val allNodes = esService.discoverNodes()
         allNodes.foreach(n => logger.info("Discovered: " + n))
 
         val workers = new ListBuffer[Future[ProcessResult]]
@@ -483,7 +311,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
                         // create manifest file for shard
                         val localNodeManifestFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot.manifest"
-                        createManifestFile(localNodeManifestFile,buildSnapshotManifest(client,node,shardNum,localShardSegmentsInfoFile,snapshot))
+                        createManifestFile(localNodeManifestFile,buildSnapshotManifest(node,shardNum,localShardSegmentsInfoFile,snapshot))
 
                         // create and download
                         createAndDownloadSnapshotTarball(node.address,
