@@ -13,8 +13,6 @@ import ExecutionContext.Implicits.global
 import scala.collection.mutable.{ ListBuffer }
 
 
-import com.decodified.scalassh._
-
 import scala.io.StdIn
 
 import scala.concurrent.duration._
@@ -86,20 +84,6 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     val esService = new ElasticService(esSeedHost,esClusterName)
 
-    def promptForHostConfigProvider():HostConfigProvider = {
-        print("Enter target SSH host : ")
-        val host = StdIn.readLine()
-        println()
-        print("Enter SSH username: ")
-        val username = StdIn.readLine()
-        println()
-        print("Enter SSH password: ")
-        val password = new String(System.console.readPassword())
-        println()
-        HostConfigProvider.hostConfig2HostConfigProvider(HostConfig(login=PasswordLogin(username,password), hostName=host, hostKeyVerifier=HostKeyVerifiers.DontVerify))
-    }
-
-
     def buildSnapshotManifest(forNode:Node, forShard:Int, localSegmentsInfoFilePath:String, snapshot:Snapshot):List[String] = {
 
         val snapshotName = snapshot.snapshotName
@@ -136,25 +120,6 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     }
 
-    def downloadFile(hostname:String, hostConfigProvider:HostConfigProvider, remoteFilePath:String, targetLocalFilePath:String):Either[String,Unit] = {
-        SSH(hostname,hostConfigProvider) { client =>
-
-            // node the 3rd param (listener: TransferListener) is
-            // declared implicit, so we could also just define a global
-            // variable of type TransferListener and it would pick it up
-            client.download(remoteFilePath,targetLocalFilePath)(new DownloadProgressListener("",30))
-        }
-    }
-
-    def remoteFileExists(hostname:String, hostConfigProvider:HostConfigProvider, remoteFilePath:String):Boolean = {
-
-        SSH(hostname,hostConfigProvider) { client =>
-            client.exec("[ -f "+remoteFilePath+" ] && echo \"_FOUND_\" || echo \"Not found\"").right.map { result =>
-                result.stdOutAsString().indexOf("_FOUND_") != -1
-            }
-        }.right.get
-
-    }
 
     def createAndDownloadSnapshotTarball(hostname:String,
                                           nodePort:Int,
