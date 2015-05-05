@@ -82,7 +82,9 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     val logger = LoggerFactory.getLogger(getClass)
 
-    val esService = new ElasticService(esSeedHost,esClusterName)
+    val esService:ElasticService = new DefaultElasticService(esSeedHost,esClusterName)
+
+    val sshService = new SSHService()
 
     def buildSnapshotManifest(forNode:Node, forShard:Int, localSegmentsInfoFilePath:String, snapshot:Snapshot):List[String] = {
 
