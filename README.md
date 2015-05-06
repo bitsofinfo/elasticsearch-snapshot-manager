@@ -58,3 +58,11 @@ cores on the box you are running this from.
 ```
 i.e. .... -Dscala.concurrent.context.numThreads=10 -Dscala.concurrent.context.maxThreads=20
 ```
+
+## Errata
+
+If you get an warning like this, you may want to consider downloading the "Java Cryptography Extension (JCE) Unlimited Strength Jurisdiction Policy Files" appropriate for your JRE/JVM and legal for your locality.
+
+```
+13:48:49.816 WARN  DefaultConfig - Disabling high-strength ciphers: cipher strengths apparently limited by JCE policy
+```
