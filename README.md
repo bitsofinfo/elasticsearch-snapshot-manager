@@ -1,5 +1,5 @@
 # elasticsearch-snapshot-manager
-Scala tool for managing elasticsearch snapshots. In particular aggregating and backing up snapshots files from fs local-disk repositories distributed across a large cluster.
+Scala tool for managing elasticsearch snapshots. In particular aggregating and backing up snapshots files from fs local-disk snapshot repositories distributed across a large cluster where a "shared" repository location is not avaiable... (i.e. maybe a cluster that spans multiple geographically separated data-centers)
 
 ## Status
 
