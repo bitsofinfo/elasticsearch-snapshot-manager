@@ -8,8 +8,9 @@ import scala.io.Source
 
 import org.slf4j.LoggerFactory
 import scala.concurrent._
-import scala.util.{Success, Failure}
 import ExecutionContext.Implicits.global
+import scala.util.{Success, Failure}
+import java.util.concurrent.Executors
 import scala.collection.mutable.{ ListBuffer }
 
 
@@ -245,45 +246,33 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
     }
 
     def processShard(node:Node, repository:Repository, snapshot:Snapshot,
-                     shardNum:Int, workDir:String, credential:UnamePwCredential):/*Future[*/ProcessResult/*]*/ = {
+                     shardNum:Int, workDir:String, localShardSegmentsInfoFile:String, credential:UnamePwCredential):Future[ProcessResult] = {
 
-        //future {
+        future {
 
-            logger.info("Working on node: " + node.address + " shard["+shardNum+"]")
+            logger.info("Processing: " + node.address + " shard["+shardNum+"]")
 
             try {
-                val localShardSegmentsInfoFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-"+snapshot.snapshotName
+                logger.info("Node: " + node.address +":" + node.port + " shard["+shardNum+"] contains snapshot segments.. proceeding to download...")
 
-                // pull segments meta-data file
-                val segmentsFile = repository.location + "/indices/" + snapshot.indexName + "/" + shardNum + "/snapshot-" + snapshot.snapshotName
-                sshService.downloadFile(node.address,credential,segmentsFile,localShardSegmentsInfoFile)
+                // create manifest file for shard
+                val localNodeManifestFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-segments.manifest"
+                val manifest = buildSnapshotSegmentsManifest(node,shardNum,localShardSegmentsInfoFile,snapshot)
+                createManifestFile(localNodeManifestFile,manifest)
 
-                // only if the node we connected to actually has some data (metadata || shard segment data)...
-                if (new java.io.File(localShardSegmentsInfoFile).exists) {
+                // create and download
+                createAndDownloadSnapshotTarball(node.address,
+                                                 credential,
+                                                 repository.location,
+                                                 localNodeManifestFile,
+                                                 "/tmp/snapshotManager-tarball-manifest-s" + shardNum + "-" +java.util.UUID.randomUUID.toString,
+                                                 node.address + "_"+ node.port + "-" + repository.name + "-"
+                                                    + snapshot.snapshotName + "-" + snapshot.indexName+"-s" + shardNum+ "-shard-files.tar.gz",
+                                                 "/tmp",
+                                                 workDir)
 
-                    logger.info("Node: " + node.address +":" + node.port + " shard["+shardNum+"] contains snapshot segments.. proceeding to download...")
+                new ProcessResult(node,"Node["+node.address+":"+node.port+"].Shard["+shardNum+"] segment data downloaded ok",true,null)
 
-                    // create manifest file for shard
-                    val localNodeManifestFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-segments.manifest"
-                    val manifest = buildSnapshotSegmentsManifest(node,shardNum,localShardSegmentsInfoFile,snapshot)
-                    createManifestFile(localNodeManifestFile,manifest)
-
-                    // create and download
-                    createAndDownloadSnapshotTarball(node.address,
-                                                     credential,
-                                                     repository.location,
-                                                     localNodeManifestFile,
-                                                     "/tmp/snapshotManager-tarball-manifest-s" + shardNum + "-" +java.util.UUID.randomUUID.toString,
-                                                     node.address + "_"+ node.port + "-" + repository.name + "-"
-                                                        + snapshot.snapshotName + "-" + snapshot.indexName+"-s" + shardNum+ "-shard-files.tar.gz",
-                                                     "/tmp",
-                                                     workDir)
-
-                    new ProcessResult(node,"Node["+node.address+":"+node.port+"].Shard["+shardNum+"] segment data downloaded ok",true,null)
-
-                } else {
-                    new ProcessResult(node,"Node["+node.address+":"+node.port+"].Shard["+shardNum+"] is not applicable for this node",true,null)
-                }
 
             } catch {
                 case e:Exception => {
@@ -293,7 +282,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
                 }
             }
 
-        //}
+        }
     }
 
     def processNode(node:Node, repository:Repository, snapshot:Snapshot,
@@ -303,7 +292,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
             try {
 
-                logger.info("Working on node: " + node.address)
+                logger.info("Processing node: " + node.address)
 
                 val credential = new UnamePwCredential(username,password)
 
@@ -328,14 +317,24 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
 
                 // connect and download
-                //val shardWorkers = new ListBuffer[Future[ProcessResult]]
+                val shardWorkers = new ListBuffer[Future[ProcessResult]]
 
                 // next we attempt to process shard segment data per node
                 for (shardNum <- (0 to (snapshot.successfulShards-1))) {
-                    /*shardWorkers += */ processShard(node, repository, snapshot, shardNum, workDir, credential)
+
+                    val localShardSegmentsInfoFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-"+snapshot.snapshotName
+
+                    // pull segments meta-data file
+                    val segmentsFile = repository.location + "/indices/" + snapshot.indexName + "/" + shardNum + "/snapshot-" + snapshot.snapshotName
+                    sshService.downloadFile(node.address,credential,segmentsFile,localShardSegmentsInfoFile)
+
+                    // only if the node we connected to actually has some data (metadata || shard segment data)...
+                    if (new java.io.File(localShardSegmentsInfoFile).exists) {
+                        shardWorkers += processShard(node, repository, snapshot, shardNum, workDir, localShardSegmentsInfoFile, credential)
+                    }
                 }
 
-                /*
+
                 shardWorkers.foreach(w => {
                     // there is some bug where if this block is called within
                     // the foreach above.. it causes 2 threads to be spawned per
@@ -347,7 +346,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
                 })
 
                 shardWorkers.foreach(w => Await.result(w,60 minutes))
-                */
+
                 logger.info("NODE ("+node.address+") SHARDS COMPLETE!")
 
                 new ProcessResult(node,"Node["+node.address+":"+node.port+"] completed ok",true,null)
@@ -361,7 +360,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
             }
 
 
-        }
+            }
 
     }
 
