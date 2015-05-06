@@ -49,3 +49,17 @@ This tool is intended to aid with the following scenario:
 ```
 java -jar elasticsearch-snapshot-manager-assembly-1.0.jar [esSeedHostname] [esClusterName] [pathToEmptyLocalWorkDir] [minutesToWaitPerDownload]
 ```
+
+OPTIONAL JVM arguments you may want to consider:
+
+Tweak your jvm heap size:
+```
+i.e. .... -Xms1500m -Xmx1500m
+```
+
+Tweak the default thread pool, this controls the total number of snapshot data tarballs
+that would be concurrently downloaded. You need to balance this w/ the number of availble
+cores on the box you are running this from.
+```
+i.e. .... -Dscala.concurrent.context.numThreads=10 -Dscala.concurrent.context.maxThreads=20
+```
