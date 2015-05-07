@@ -18,8 +18,9 @@ This tool is intended to aid with the following scenario:
 
 ## Prerequisites
 
-1. This must be run from a machine that has direct access to port 9300 on all nodes of your elasticsearch cluster
-2. You must be able to provide a username/password of a user that exists on all of your elasticsearch nodes, who in-turn has READ access to the local filesystem snapshot directory on each node. (This is used for SSH/SCP operations).. and I will work to support a key based model
+1. ElasticSearch 1.5.x
+2. This must be run from a machine that has direct access to port 9300 on all nodes of your elasticsearch cluster
+3. You must be able to provide a username/password of a user that exists on all of your elasticsearch nodes, who in-turn has READ access to the local filesystem snapshot directory on each node. (This is used for SSH/SCP operations).. and I will work to support a key based model
 
 ## What does this actually do?
 
