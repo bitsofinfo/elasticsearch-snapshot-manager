@@ -70,6 +70,7 @@ i.e. .... -Dscala.concurrent.context.numThreads=10 -Dscala.concurrent.context.ma
 4. If you say "yes" to the execute with SUDO option, the SSH session will use forced "psuedo tty" and your password will be echoed from STDIN to the sudo command (via `sudo -S`). The first thing the program does it issue a `export HISTCONTROL=ignorespace` so that all of these echos (prefixed with a space) will not go into `history`.
 5. See the source code for what operations are done... basically it copies/tars files out of the Elasticsearch snapshot FS directories into a remote "work dir" and secures those files w/ 600 for the user you specify it to connect against
 6. Command injection is likely possible with this tool, but again read 1 and 2 above. If you want to use this tool with your own user account for nefarious purposes, then why not just login and do it yourself?
+7. **I highly discourage anyone from exposing access to this tool via another program, web-service or interface that takes un-sanitzed user input**
 
 ## Errata
 
