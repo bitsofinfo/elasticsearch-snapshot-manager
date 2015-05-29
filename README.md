@@ -64,12 +64,12 @@ i.e. .... -Dscala.concurrent.context.numThreads=10 -Dscala.concurrent.context.ma
 ```
 ## Security
 
-a) This program collects YOUR credentials and uses them to execute several commands over SSH against remote servers that you have access to.
-b) You should treat this program no differently than if you were logging into those servers yourself and doing those commands
-c) I highly encourage you to review the source code before running if you have any concerns.
-d) If you say "yes" to the execute with SUDO option, the SSH session will use forced "psuedo tty" and your password will be echoed from STDIN to the sudo command (via `sudo -S`). The first thing the program does it issue a `export HISTCONTROL=ignorespace` so that all of these echos (prefixed with a space) will not go into `history`.
-e) See the source code for what operations are done... basically it copies/tars files out of the Elasticsearch snapshot FS directories into a remote "work dir" and secures those files w/ 600 for the user you specify it to connect against
-f) Command injection is likely possible with this tool, but again read A and B above. If you want to use this tool with your own user account for nefarious purposes, then why not just login and do it yourself?
+1. This program collects YOUR credentials and uses them to execute several commands over SSH against remote servers that you have access to.
+2. You should treat this program no differently than if you were logging into those servers yourself and doing those commands
+3. I highly encourage you to review the source code before running if you have any concerns.
+4. If you say "yes" to the execute with SUDO option, the SSH session will use forced "psuedo tty" and your password will be echoed from STDIN to the sudo command (via `sudo -S`). The first thing the program does it issue a `export HISTCONTROL=ignorespace` so that all of these echos (prefixed with a space) will not go into `history`.
+5. See the source code for what operations are done... basically it copies/tars files out of the Elasticsearch snapshot FS directories into a remote "work dir" and secures those files w/ 600 for the user you specify it to connect against
+6. Command injection is likely possible with this tool, but again read 1 and 2 above. If you want to use this tool with your own user account for nefarious purposes, then why not just login and do it yourself?
 
 ## Errata
 
