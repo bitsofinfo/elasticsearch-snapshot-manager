@@ -12,6 +12,8 @@ import ExecutionContext.Implicits.global
 import scala.util.{Success, Failure}
 import java.util.concurrent.Executors
 import scala.collection.mutable.{ ListBuffer }
+import java.text.SimpleDateFormat
+import java.util.Date
 
 
 import scala.io.StdIn
@@ -131,6 +133,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
     def createAndDownloadSnapshotTarball(hostname:String,
                                          credentials:UnamePwCredential,
+                                         sudoRemoteOps:Boolean,
                                          repositoryRoot:String,
                                          localManifestFilePath:String,
                                          remoteManifestFilePath:String,
@@ -143,10 +146,18 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
         // tar up the files
         val remoteSnapshotTarballPath = remoteTarballTargetDir + "/" + remoteTarballFileName
-        sshService.execute(hostname, credentials, "cd " + repositoryRoot + "; tar -cvzf " + remoteSnapshotTarballPath + " -T " + remoteManifestFilePath)
+        val cmds = Array("tar -C "+repositoryRoot+" -cvzf " + remoteSnapshotTarballPath + " -T " + remoteManifestFilePath,
+                         "chmod 600 " + remoteSnapshotTarballPath,
+                         "chown " + credentials.username + " " + remoteSnapshotTarballPath)
+
+        sshService.execute(hostname, credentials, sudoRemoteOps, cmds)
 
         // download the [targetDir]/x.tar to local directory
         sshService.downloadFile(hostname,credentials,remoteSnapshotTarballPath,localTarballTargetDir)
+
+        // cleanup remote files in remoteWorkDir
+        sshService.execute(hostname, credentials, sudoRemoteOps, Array("rm -f " + remoteSnapshotTarballPath,
+                                                                       "rm -f " + remoteManifestFilePath))
 
         logger.info("Downloaded tarball from: " + hostname + " stored locally @ " + localTarballTargetDir + "/" + remoteTarballFileName)
 
@@ -180,7 +191,7 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
 
 
-    def collectAllSnapshotTarballs(workDir:String, minutesToWait:Long):Unit = {
+    def collectAllSnapshotTarballs(localWorkDir:String, remoteWorkDir:String, minutesToWait:Long):Unit = {
 
         // get repository
         val repos = esService.getRepositories(Seq("_all"))
@@ -211,6 +222,9 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         val username = getUserInput(prompt="Enter SSH username: ", secure=false)
         val password = getUserInput(prompt="Enter SSH password: ", secure=true)
 
+        // operate all remote operations via sudo?
+        val sudoRemoteOps = if (getUserInput(prompt="SUDO all remote operations? (y/n): ", secure=false) == "y") true else false
+
         val ready = getUserInput("Ready to proceed? (y/n): ");
         if (ready.trim != "y") {
             logger.info("Terminating process, received something other than 'y'")
@@ -223,10 +237,12 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         val allNodes = esService.discoverNodes()
         allNodes.foreach(n => logger.info("Discovered: " + n))
 
-        val workers = new ListBuffer[Future[ProcessResult]]
+        // generate job identifier
+        val jobId = new SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date());
 
+        val workers = new ListBuffer[Future[ProcessResult]]
         allNodes.foreach(node => {
-            workers += processNode(node,repository,snapshot,workDir,username,password);
+            workers += processNode(jobId,node,repository,snapshot,localWorkDir,remoteWorkDir,username,password,sudoRemoteOps);
         })
 
         workers.foreach(w => {
@@ -241,12 +257,18 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
 
         workers.foreach(w => Await.result(w,minutesToWait minutes))
 
-        logger.info("COMPLETE! All downloaded tarballs located @ " + workDir)
+        // cleanup all transient jobId files OTHER than *.gz files in localWorkDir
+        new File(localWorkDir).listFiles().foreach(f => {
+            if (f.getName.indexOf(jobId) != -1 && f.getName.indexOf("tar.gz") == -1) f.delete
+        })
+
+        logger.info("COMPLETE! All downloaded tarballs located @ " + localWorkDir)
 
     }
 
-    def processShard(node:Node, repository:Repository, snapshot:Snapshot,
-                     shardNum:Int, workDir:String, localShardSegmentsInfoFile:String, credential:UnamePwCredential):Future[ProcessResult] = {
+    def processShard(jobId:String, node:Node, repository:Repository, snapshot:Snapshot,
+                     shardNum:Int, localWorkDir:String, remoteWorkDir:String, localShardSegmentsInfoFile:String,
+                     credential:UnamePwCredential, sudoRemoteOps:Boolean):Future[ProcessResult] = {
 
         future {
 
@@ -256,20 +278,24 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
                 logger.info("Node: " + node.address +":" + node.port + " shard["+shardNum+"] contains snapshot segments.. proceeding to download...")
 
                 // create manifest file for shard
-                val localNodeManifestFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-segments.manifest"
+                val localNodeManifestFile = localWorkDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-segments.manifest-" + jobId
                 val manifest = buildSnapshotSegmentsManifest(node,shardNum,localShardSegmentsInfoFile,snapshot)
                 createManifestFile(localNodeManifestFile,manifest)
+
+                // target tarball file that will be created in remoteWorkDir
+                val shardFilesTarball = node.address + "_"+ node.port + "-" + repository.name + "-" +
+                                        snapshot.snapshotName + "-" + snapshot.indexName+"-s" + shardNum+ "-shard-files-"+jobId+".tar.gz"
 
                 // create and download
                 createAndDownloadSnapshotTarball(node.address,
                                                  credential,
+                                                 sudoRemoteOps,
                                                  repository.location,
                                                  localNodeManifestFile,
-                                                 "/tmp/snapshotManager-tarball-manifest-s" + shardNum + "-" +java.util.UUID.randomUUID.toString,
-                                                 node.address + "_"+ node.port + "-" + repository.name + "-"
-                                                    + snapshot.snapshotName + "-" + snapshot.indexName+"-s" + shardNum+ "-shard-files.tar.gz",
-                                                 "/tmp",
-                                                 workDir)
+                                                 remoteWorkDir+ "/snapshotManager-tarball-manifest-s" + shardNum + "-" +jobId,
+                                                 shardFilesTarball,
+                                                 remoteWorkDir,
+                                                 localWorkDir)
 
                 new ProcessResult(node,"Node["+node.address+":"+node.port+"].Shard["+shardNum+"] segment data downloaded ok",true,null)
 
@@ -285,8 +311,9 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
         }
     }
 
-    def processNode(node:Node, repository:Repository, snapshot:Snapshot,
-                    workDir:String, username:String, password:String):Future[ProcessResult] = {
+    def processNode(jobId:String, node:Node, repository:Repository, snapshot:Snapshot,
+                    localWorkDir:String, remoteWorkDir:String,
+                    username:String, password:String, sudoRemoteOps:Boolean):Future[ProcessResult] = {
 
         future {
 
@@ -297,22 +324,26 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
                 val credential = new UnamePwCredential(username,password)
 
                 // does this node contain the snapshot meta-data files?
-                val metaDataFilesExist = sshService.remoteFileExists(node.address,credential,repository.location + "/metadata-"+snapshot.snapshotName)
+                val metaDataFilesExist = sshService.remoteFileExists(node.address,credential,
+                        sudoRemoteOps,repository.location + "/metadata-"+snapshot.snapshotName)
+
                 if (metaDataFilesExist) {
-                    val localNodeManifestFile = workDir+"/"+node.address+"-"+node.port+"-snapshot-metadata.manifest"
+                    val localNodeManifestFile = localWorkDir+"/"+node.address+"-"+node.port+"-snapshot-metadata.manifest-"+jobId
                     val metadataManifest = buildSnapshotMetadataManifest(snapshot)
                     createManifestFile(localNodeManifestFile,metadataManifest)
 
                     // create and download
                     createAndDownloadSnapshotTarball(node.address,
                                                      credential,
+                                                     sudoRemoteOps,
                                                      repository.location,
                                                      localNodeManifestFile,
-                                                     "/tmp/snapshotManager-tarball-manifest-metadata-" +java.util.UUID.randomUUID.toString,
+                                                     remoteWorkDir+"/snapshotManager-tarball-manifest-metadata-" + jobId,
                                                      node.address + "_"+ node.port + "-" + repository.name + "-"
-                                                        + snapshot.snapshotName + "-" +snapshot.indexName+"-metadata-files.tar.gz",
-                                                     "/tmp",
-                                                     workDir)
+                                                        + snapshot.snapshotName + "-" +snapshot.indexName+"-metadata-files-"+jobId+".tar.gz",
+                                                     remoteWorkDir,
+                                                     localWorkDir)
+
                 }
 
 
@@ -322,15 +353,29 @@ class SnapshotManager(val esSeedHost:String, val esClusterName:String) {
                 // next we attempt to process shard segment data per node
                 for (shardNum <- (0 to (snapshot.successfulShards-1))) {
 
-                    val localShardSegmentsInfoFile = workDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-"+snapshot.snapshotName
+                    val localShardSegmentsInfoFile = localWorkDir+"/"+node.address+"-"+node.port+"-shard"+shardNum+"-snapshot-"+snapshot.snapshotName+ "-" + jobId
 
                     // pull segments meta-data file
                     val segmentsFile = repository.location + "/indices/" + snapshot.indexName + "/" + shardNum + "/snapshot-" + snapshot.snapshotName
-                    sshService.downloadFile(node.address,credential,segmentsFile,localShardSegmentsInfoFile)
+
+                    // we need to move to a readable directory to ensure we can download it
+                    val downloadSegmentsFileFrom = remoteWorkDir+ "/snapshot-" + snapshot.indexName+ "-s" + shardNum + "-" + snapshot.snapshotName + "-" + jobId
+                    sshService.execute(node.address, credential, sudoRemoteOps,
+                                Array("cp " + segmentsFile + " "+ downloadSegmentsFileFrom,
+                                      "chmod 600 "+downloadSegmentsFileFrom,
+                                      "chown " + credential.username + " " + downloadSegmentsFileFrom))
+
+
+                    // download segments meta-data file
+                    sshService.downloadFile(node.address,credential,downloadSegmentsFileFrom,localShardSegmentsInfoFile)
+
+                    // clean it up from remote workdir now that we have it
+                    sshService.execute(node.address, credential, sudoRemoteOps, "rm -f " + downloadSegmentsFileFrom)
 
                     // only if the node we connected to actually has some data (metadata || shard segment data)...
                     if (new java.io.File(localShardSegmentsInfoFile).exists) {
-                        shardWorkers += processShard(node, repository, snapshot, shardNum, workDir, localShardSegmentsInfoFile, credential)
+                        shardWorkers += processShard(jobId, node, repository, snapshot, shardNum, localWorkDir,
+                                                    remoteWorkDir, localShardSegmentsInfoFile, credential, sudoRemoteOps)
                     }
                 }
 

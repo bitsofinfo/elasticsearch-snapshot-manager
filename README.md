@@ -20,17 +20,18 @@ This tool is intended to aid with the following scenario:
 
 1. ElasticSearch 1.5.x
 2. This must be run from a machine that has direct access to port 9300 on all nodes of your elasticsearch cluster
-3. You must be able to provide a username/password of a user that exists on all of your elasticsearch nodes, who in-turn has READ access to the local filesystem snapshot directory on each node. (This is used for SSH/SCP operations).. and I will work to support a key based model
+3. You must be able to provide a username/password of a user that exists on all of your elasticsearch nodes, who in-turn has READ access to the local filesystem snapshot directory on each node (either directly or via `sudo`). (This is used for SSH/SCP operations).. and yes, work should be done to support a key based model
 
 ## What does this actually do?
 
 1. Queries the cluster for all available snapshot repositories and prompts you to select one.
 2. Next it prompts you to pick a snapshot you want to consolidate from that repository
 3. Prompts you for the username/password for the SSH user it will connect to all nodes with
-4. Proceeds to discover all nodes in the cluster, determine which nodes actually have relevant snapshot metadata/segment files
-5. For each node, forks and connects to each relevant node in parallel, creates a tar.gz under /tmp (locally on each es node)
-6. Finally it downloads all the individual tarballs (in parallel) to your local working dir (specified on command start). Progress is reported every 30 seconds.
-7. You can then run a command like `for i in *.tar.gz; do tar -xvf $i; done` to consolidate them all onto another machine to restore the snapshot somewhere else.
+4. Prompts you if you want all remote SSH commands to be run via `sudo` for the user specified
+5. Proceeds to discover all nodes in the cluster, determine which nodes actually have relevant snapshot metadata/segment files
+6. For each node, forks and connects to each relevant node in parallel, creates a tar.gz under /tmp (locally on each es node)
+7. Finally it downloads all the individual tarballs (in parallel) to your local working dir (specified on command start). Progress is reported every 10 seconds.
+8. You can then run a command like `for i in *.tar.gz; do tar -xvf $i; done` to consolidate them all onto another machine to restore the snapshot somewhere else.
 
 ## Usage/Building
 
@@ -43,8 +44,10 @@ This tool is intended to aid with the following scenario:
 3. Take the resulting jar from:   `target/scala-[version]/elasticsearch-snapshot-manager-assembly-1.0.jar` and copy it to a machine that has access to all your elasticsearch cluster nodes running on port 9300
 4. run from a box w/ full access to your es cluster @9300
 ```
-java -jar elasticsearch-snapshot-manager-assembly-1.0.jar [esSeedHostname] [esClusterName] [pathToEmptyLocalWorkDir] [minutesToWaitPerDownload]
+java -jar elasticsearch-snapshot-manager-assembly-1.0.jar [esSeedHostname] [esClusterName] [pathToEmptyLocalWorkDir] [pathToRemoteWorkDir] [minutesToWaitPerDownload]
 ```
+
+Note the user you specify when prompted must have RW access to the `pathToRemoteWorkDir` specified in the command startup on ALL ES nodes in your cluster.
 
 OPTIONAL JVM arguments you may want to consider:
 

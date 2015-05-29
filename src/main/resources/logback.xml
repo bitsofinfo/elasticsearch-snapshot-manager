@@ -21,9 +21,9 @@
     </root>
 
     <logger name="org.bitsofinfo" level="DEBUG"/>
-    <logger name="net.schmizz" level="WARN"/>
+    <logger name="net.schmizz" level="ERROR"/>
     <logger name="net.schmizz.sshj.xfer.scp.SCPEngine" level="ERROR"/>
-    <logger name="com.decodified.scalassh" level="WARN"/>
-    <logger name="n.s.sshj" level="WARN"/>
+    <logger name="com.decodified.scalassh" level="ERROR"/>
+    <logger name="n.s.sshj" level="ERROR"/>
     <logger name="org.elasticsearch" level="INFO"/>
 </configuration>
