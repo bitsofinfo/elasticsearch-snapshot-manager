@@ -79,3 +79,7 @@ If you get an warning like this, you may want to consider downloading the "Java 
 ```
 13:48:49.816 WARN  DefaultConfig - Disabling high-strength ciphers: cipher strengths apparently limited by JCE policy
 ```
+
+## Reference
+
+Excellent article on the Elasticsearch snapshot format: https://www.found.no/foundation/elasticsearch-snapshot-and-restore/
