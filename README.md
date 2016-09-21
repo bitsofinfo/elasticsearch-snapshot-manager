@@ -29,7 +29,7 @@ This tool is intended to aid with the following scenario:
 3. Prompts you for the username/password for the SSH user it will connect to all nodes with
 4. Prompts you if you want all remote SSH commands to be run via `sudo` for the user specified
 5. Proceeds to discover all nodes in the cluster, determine which nodes actually have relevant snapshot metadata/segment files
-6. For each node, forks and connects to each relevant node in parallel, creates a tar.gz under [/some-tmp-dir] (locally on each es node)
+6. For each node, forks and connects to each relevant node in parallel, creates a tar.gz under /configurable-work-dir (locally on each es node)
 7. Finally it downloads all the individual tarballs (in parallel) to your local working dir (specified on command start). Progress is reported every 10 seconds.
 8. You can then run a command like `for i in *.tar.gz; do tar -xvf $i; done` to consolidate them all onto another machine to restore the snapshot somewhere else.
 
